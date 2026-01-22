@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <!-- 保留原有qgis2web资源 -->
+    <link rel="stylesheet" href="./resources/ol.css">
+    <link rel="stylesheet" href="./resources/fontawesome-all.min.css">
+    <link rel="stylesheet" type="text/css" href="./resources/horsey.min.css">
+    <link rel="stylesheet" type="text/css" href="./resources/ol-search-layer.min.css">
+    <link href="./resources/photon-geocoder-autocomplete.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="./resources/ol-layerswitcher.css">
+    <link rel="stylesheet" href="./resources/qgis2web.css">
+    <!-- ECharts保留 -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        /* 保留原有基础样式 */
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: #ffffff;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+        /* ########## 强化透视效果：标题核心样式 ########## */
+        .title-container {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            /* 1. 降低透明度（70%→更透），背景更淡 */
+            background: rgba(255, 255, 255, 0.7);
+            /* 2. 增强毛玻璃模糊（5px→8px），透视层次感更强 */
+            -webkit-backdrop-filter: blur(8px);
+            backdrop-filter: blur(8px);
+            /* 3. 加宽内边距，内容更舒展，减少拥挤感 */
+            padding: 10px 20px;
+            /* 4. 弱化边框（0.5→0.3透明度），几乎与背景融合 */
+            border: 1px solid rgba(204, 204, 204, 0.3);
+            font-family: "Microsoft Yahei", 微软雅黑, Arial, sans-serif;
+            font-size: 26px;
+            font-weight: bold;
+            z-index: 9999 !important;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            white-space: nowrap;
+            /* 5. 极淡阴影（0.1→0.08），几乎不遮挡地图 */
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            /* 6. 文字加轻微白影，确保透明背景下文字不模糊 */
+            text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+        }
+
+        .title-logo {
+            width: 80px;
+            height: 80px;
+            vertical-align: middle;
+            object-fit: contain;
+            /* 7. 校徽加稍强阴影，避免与地图背景“融在一起” */
+            filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.12));
+        }
+        /* 搜索面板样式（同步微调，保持协调） */
+        #photonBox {
+            position: absolute;
+            top: 150px; /* 随标题下移10px，避免拥挤 */
+            left: 10px;
+            z-index: 1000;
+            /* 搜索面板也加轻微毛玻璃，与标题风格统一 */
+            background: rgba(255, 255, 255, 0.9);
+            -webkit-backdrop-filter: blur(4px);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(204, 204, 204, 0.4);
+            padding: 8px 10px;
+            width: 260px;
+            font-family: "Microsoft Yahei", 微软雅黑, Arial, sans-serif;
+            font-size: 13px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+            /* 搜索标题样式 */
+            #photonBox strong {
+                display: block;
+                margin-bottom: 5px;
+                color: #333;
+            }
+        /* 搜索输入框样式 */
+        #photonInput {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #ccc;
+            border-radius: 2px;
+            font-size: 13px;
+            margin-bottom: 5px;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+            #photonInput:focus {
+                border-color: #0066cc;
+            }
+        /* 搜索结果容器样式 */
+        #photonResults {
+            max-height: 220px;
+            overflow: auto;
+            display: none;
+            margin-top: 4px;
+            border-top: 1px solid #eee;
+            padding-top: 4px;
+        }
+        /* 搜索结果项样式（区分城市名和GDP） */
+        .photon-item {
+            padding: 6px 8px;
+            cursor: default;
+            border-bottom: 1px solid #f5f5f5;
+        }
+
+            .photon-item:hover {
+                background-color: #fafafa;
+            }
+
+        .city-name {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .city-gdp {
+            font-size: 12px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        .no-result {
+            padding: 6px 8px;
+            color: #999;
+            font-size: 12px;
+        }
+        /* 保留原有弹窗、版权、图表样式（版权同步强化透视） */
+        #objective-panel, #chart-panel {
+            position: absolute;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 1000;
+            font-family: "Microsoft Yahei", 微软雅黑, Arial, sans-serif;
+        }
+
+        #objective-panel {
+            top: 400px;
+            right: 10px;
+            width: 220px;
+        }
+
+        #chart-panel {
+            top: 580px;
+            right: 10px;
+            width: 380px;
+        }
+
+        #gdp-light-chart {
+            width: 100%;
+            height: 300px;
+        }
+
+        #credits {
+            position: absolute;
+            bottom: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            /* 版权同步标题的透视参数，整体协调 */
+            background: rgba(255,255,255,0.7);
+            -webkit-backdrop-filter: blur(6px);
+            backdrop-filter: blur(6px);
+            padding: 4px 12px;
+            font-size: 12px;
+            border: 1px solid rgba(204,204,204,0.3);
+            z-index: 1000;
+            text-shadow: 0 1px 1px rgba(255,255,255,0.9);
+        }
+        /* 折叠面板通用样式（保留） */
+        .panel-header {
+            padding: 8px 12px;
+            font-weight: bold;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+            .panel-header::after {
+                content: "▼";
+                font-size: 12px;
+                transition: transform 0.2s;
+            }
+
+            .panel-header.collapsed::after {
+                transform: rotate(-180deg);
+            }
+
+        .panel-content {
+            padding: 12px;
+            display: block;
+        }
+
+            .panel-content.hidden {
+                display: none;
+            }
+        /* 保留原有弹窗样式 */
+        .ol-popup {
+            position: absolute;
+            background-color: white;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #cccccc;
+            bottom: 12px;
+            left: -50px;
+            min-width: 280px;
+            z-index: 10000;
+        }
+
+            .ol-popup:after, .ol-popup:before {
+                top: 100%;
+                border: solid transparent;
+                content: " ";
+                height: 0;
+                width: 0;
+                position: absolute;
+                pointer-events: none;
+            }
+
+            .ol-popup:after {
+                border-top-color: white;
+                border-width: 10px;
+                left: 48px;
+                margin-left: -10px;
+            }
+
+            .ol-popup:before {
+                border-top-color: #cccccc;
+                border-width: 11px;
+                left: 48px;
+                margin-left: -11px;
+            }
+
+        .ol-popup-closer {
+            text-decoration: none;
+            position: absolute;
+            top: 2px;
+            right: 8px;
+        }
+
+            .ol-popup-closer:after {
+                content: "✖";
+            }
+        /* 保留OpenLayers控件样式 */
+        .ol-control > * {
+            background-color: #f8f8f8 !important;
+            color: #444444 !important;
+            border-radius: 0px;
+        }
+
+        .ol-attribution a, .gcd-gl-input::placeholder, .search-layer-input-search::placeholder {
+            color: #444444 !important;
+        }
+
+        .search-layer-input-search {
+            background-color: #f8f8f8 !important;
+        }
+
+        .ol-control > *:focus, .ol-control > *:hover {
+            background-color: rgba(248, 248, 248, 0.7) !important;
+        }
+
+        .ol-control {
+            background-color: rgba(255,255,255,.4) !important;
+            padding: 2px !important;
+        }
+    </style>
+    <title>内蒙古自治区GDP与夜间灯光强度可视化</title>
+</head>
+<body>
+    <!-- 强化透视效果的标题 -->
+    <div class="title-container">
+        <img src="./images/logo2.png" alt="中国石油大学校徽" class="title-logo">
+        内蒙古自治区GDP与夜间灯光强度可视化
+    </div>
+
+    <!-- 保留原有研究目的面板 -->
+    <div id="objective-panel" class="panel">
+        <div class="panel-header">研究目的</div>
+        <div class="panel-content">
+            <ol style="margin:5px 0 0 20px; padding:0;">
+                <li>探究内蒙古夜间灯光分布与各地级市GDP水平的联系。</li>
+                <li>分析工业建筑和贸易区分布与GDP高低的联系。</li>
+            </ol>
+        </div>
+    </div>
+
+    <!-- 保留原有GDP图表面板 -->
+    <div id="chart-panel" class="panel">
+        <div class="panel-header">GDP与夜间灯光强度</div>
+        <div class="panel-content">
+            <div id="gdp-light-chart"></div>
+        </div>
+    </div>
+
+    <!-- 保留原有地图容器 -->
+    <div id="map">
+        <div id="popup" class="ol-popup">
+            <a href="#" id="popup-closer" class="ol-popup-closer"></a>
+            <div id="popup-content"></div>
+        </div>
+    </div>
+
+    <!-- 搜索面板：仅查询GDP，无外部文件调用 -->
+    <div id="photonBox">
+        <strong>查询地级市GDP</strong>
+        <input id="photonInput" type="text" placeholder="输入城市名，如：呼和浩特">
+        <div id="photonResults"></div>
+    </div>
+
+    <!-- 同步强化透视的版权信息 -->
+    <div id="credits">
+        数据来源：内蒙古统计综合数据平台、天地图、阿里云 | 底图 © OpenStreetMap contributors (CC-BY-SA) | 导出工具：QGIS2Web
+    </div>
+
+    <!-- 保留原有qgis2web脚本 -->
+    <script src="./resources/qgis2web_expressions.js"></script>
+    <script src="./resources/proj4.js"></script>
+    <script>proj4.defs('EPSG:4326', '+proj=longlat +datum=WGS84 +no_defs');</script>
+    <script src="./resources/functions.js"></script>
+    <script src="./resources/ol.js"></script>
+    <script src="./resources/horsey.min.js"></script>
+    <script src="./resources/ol-search-layer.js"></script>
+    <script src="./resources/ol-layerswitcher.js"></script>
+    <script src="./resources/photon-geocoder-autocomplete.min.js"></script>
+    <script src="./layers/__1.js"></script>
+    <script src="./layers/_railways_2.js"></script>
+    <script src="./layers/_4.js"></script>
+    <script src="./layers/_5.js"></script>
+    <script src="./styles/__1_style.js"></script>
+    <script src="./styles/_railways_2_style.js"></script>
+    <script src="./styles/_4_style.js"></script>
+    <script src="./styles/_5_style.js"></script>
+    <script src="./layers/layers.js"></script>
+    <script src="./resources/Autolinker.min.js"></script>
+    <script src="./resources/qgis2web.js"></script>
+
+    <script>
+        // 1. 保留原有折叠面板功能
+        document.querySelectorAll('.panel-header').forEach(header => {
+            header.addEventListener('click', function () {
+                const content = this.nextElementSibling;
+                this.classList.toggle('collapsed');
+                content.classList.toggle('hidden');
+            });
+        });
+
+        // 2. 保留原有GDP图表初始化
+        function initChart() {
+            const chartDom = document.getElementById('gdp-light-chart');
+            const myChart = echarts.init(chartDom);
+            const cityData = [
+                ['呼和浩特市', 1743.9, 8.2],
+                ['包头市', 2057.2, 7.9],
+                ['乌海市', null, 4.8],
+                ['赤峰市', 1825.2, 6.1],
+                ['通辽市', 1039.1, 5.8],
+                ['鄂尔多斯市', 3533.7, 8.5],
+                ['呼伦贝尔市', 1361.3, 5.2],
+                ['巴彦淖尔市', 831.1, 4.5],
+                ['乌兰察布市', 926.8, 4.2],
+                ['兴安盟', 549.3, 3.8],
+                ['锡林郭勒盟', 1009.5, 4.0],
+                ['阿拉善盟', 284.4, 2.5]
+            ];
+            const option = {
+                title: { text: '2020年GDP与夜间灯光强度对比', left: 'center', textStyle: { fontSize: 14 } },
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: (params) => {
+                        const city = params[0].name;
+                        const gdp = params[0].value ? `${params[0].value} 亿元` : '无数据';
+                        const light = params[1].value;
+                        return `${city}<br>GDP：${gdp}<br>夜间灯光强度：${light}`;
+                    }
+                },
+                legend: { data: ['GDP（亿元）', '夜间灯光强度'], top: 30 },
+                grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+                yAxis: [
+                    { type: 'value', name: 'GDP（亿元）', min: 0, max: 4000 },
+                    { type: 'value', name: '夜间灯光强度', min: 0, max: 10, position: 'right' }
+                ],
+                xAxis: { type: 'category', data: cityData.map(i => i[0]), axisLabel: { rotate: 30, interval: 0 } },
+                series: [
+                    { name: 'GDP（亿元）', type: 'line', smooth: true, color: '#0066cc', data: cityData.map(i => i[1]) },
+                    { name: '夜间灯光强度', type: 'line', smooth: true, color: '#ff6600', yAxisIndex: 1, data: cityData.map(i => i[2]) }
+                ]
+            };
+            myChart.setOption(option);
+            window.addEventListener('resize', () => myChart.resize());
+        }
+
+        // 3. 核心：硬编码Excel数据，实现GDP搜索（无外部文件，无地图缩放）
+        (function () {
+            const input = document.getElementById('photonInput');
+            const resultsContainer = document.getElementById('photonResults');
+
+            // 硬编码Excel表中的内蒙古各地级市2020年GDP数据
+            const cityGDPData = [
+                { city: '呼和浩特市', gdp: 1743.9 },
+                { city: '包头市', gdp: 2057.2 },
+                { city: '乌海市', gdp: null }, // 无数据
+                { city: '赤峰市', gdp: 1825.2 },
+                { city: '通辽市', gdp: 1039.1 },
+                { city: '鄂尔多斯市', gdp: 3533.7 },
+                { city: '呼伦贝尔市', gdp: 1361.3 },
+                { city: '巴彦淖尔市', gdp: 831.1 },
+                { city: '乌兰察布市', gdp: 926.8 },
+                { city: '兴安盟', gdp: 549.3 },
+                { city: '锡林郭勒盟', gdp: 1009.5 },
+                { city: '阿拉善盟', gdp: 284.4 }
+            ];
+
+            // 模糊搜索逻辑
+            function searchCityGDP(keyword) {
+                if (!keyword.trim()) {
+                    resultsContainer.style.display = 'none';
+                    return;
+                }
+
+                // 不区分大小写，支持部分匹配（如“呼”匹配“呼和浩特市”）
+                const matchedCities = cityGDPData.filter(item =>
+                    item.city.toLowerCase().includes(keyword.toLowerCase())
+                );
+
+                // 渲染搜索结果
+                if (matchedCities.length > 0) {
+                    let html = '';
+                    matchedCities.forEach(item => {
+                        const gdpText = item.gdp !== null ? `${item.gdp} 亿元` : '无数据';
+                        html += `
+                                <div class="photon-item">
+                                    <div class="city-name">${item.city}</div>
+                                    <div class="city-gdp">2020年GDP总量：${gdpText}</div>
+                                </div>
+                            `;
+                    });
+                    resultsContainer.style.display = 'block';
+                    resultsContainer.innerHTML = html;
+                } else {
+                    resultsContainer.style.display = 'block';
+                    resultsContainer.innerHTML = `<div class="no-result">未找到“${keyword}”相关地级市</div>`;
+                }
+            }
+
+            // 绑定输入事件：实时搜索
+            input.addEventListener('input', () => {
+                searchCityGDP(input.value.trim());
+            });
+
+            // 点击页面其他区域关闭结果面板
+            document.addEventListener('click', (e) => {
+                const searchBox = document.getElementById('photonBox');
+                if (!searchBox.contains(e.target)) {
+                    resultsContainer.style.display = 'none';
+                }
+            });
+        })();
+
+        // 4. 初始化图表
+        window.addEventListener('load', function () {
+            initChart();
+        });
+    </script>
+</body>
+</html>
